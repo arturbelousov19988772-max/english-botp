@@ -5,6 +5,130 @@ import sqlite3
 import re
 import requests
 import base64
+import sqlite3
+from contextlib import contextmanager
+
+DB = "bot.db"
+
+@contextmanager
+def get_db():
+    conn = sqlite3.connect(DB)
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+def init_db():
+    """Инициализация базы данных"""
+    with get_db() as db:
+        # Таблица пользователей
+        db.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY,
+            username TEXT,
+            first_name TEXT,
+            wrong INTEGER DEFAULT 0,
+            correct INTEGER DEFAULT 0,
+            add_mode TEXT DEFAULT 'none',
+            temp_eng TEXT,
+            quiz_mode TEXT DEFAULT 'multiple',
+            auto_mode INTEGER DEFAULT 0,
+            quiz_active INTEGER DEFAULT 0
+        )
+        """)
+        
+        # Таблица слов пользователя
+        db.execute("""
+        CREATE TABLE IF NOT EXISTS user_words (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            eng TEXT,
+            ru TEXT,
+            transcription TEXT,
+            correct_count INTEGER DEFAULT 0,
+            wrong_count INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, eng, ru)
+        )
+        """)
+        
+        db.commit()
+    print("✅ База данных готова")
+    DB = "bot.db"
+
+@contextmanager
+def get_db():
+    conn = sqlite3.connect(DB)
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+def migrate_db():
+    """Обновление структуры базы данных"""
+    with get_db() as db:
+        # Колонки для user_words
+        try:
+            db.execute("ALTER TABLE user_words ADD COLUMN word_type TEXT DEFAULT 'word'")
+            print("✅ Добавлена колонка word_type")
+        except sqlite3.OperationalError:
+            pass
+        
+        try:
+            db.execute("ALTER TABLE user_words ADD COLUMN transcription TEXT")
+            print("✅ Добавлена колонка transcription")
+        except sqlite3.OperationalError:
+            pass
+        
+        # Колонки для users
+        columns = [
+            ("username", "TEXT"),
+            ("first_name", "TEXT"),
+            ("add_mode", "TEXT DEFAULT 'none'"),
+            ("temp_eng", "TEXT"),
+            ("quiz_mode", "TEXT DEFAULT 'multiple'"),
+            ("auto_mode", "INTEGER DEFAULT 0"),
+            ("quiz_active", "INTEGER DEFAULT 0"),
+            ("wrong", "INTEGER DEFAULT 0"),
+            ("correct", "INTEGER DEFAULT 0")
+        ]
+        
+        for col_name, col_type in columns:
+            try:
+                db.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}")
+                print(f"✅ Добавлена колонка {col_name}")
+            except sqlite3.OperationalError:
+                pass
+        
+        db.commit()
+
+def init_db():
+    with get_db() as db:
+        db.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY
+        )
+        """)
+        
+        db.execute("""
+        CREATE TABLE IF NOT EXISTS user_words (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            eng TEXT,
+            ru TEXT,
+            correct_count INTEGER DEFAULT 0,
+            wrong_count INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, eng, ru)
+        )
+        """)
+        
+        db.commit()
+    
+    migrate_db()
+    print("✅ База данных готова")
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, BotCommand, BotCommandScopeDefault, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import Command
