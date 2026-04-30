@@ -5,3 +5,4 @@ pytesseract
 googletrans
 requests
 epitran
+g2p-en
