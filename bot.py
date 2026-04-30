@@ -175,93 +175,154 @@ dp = Dispatcher()
 
 DB = "bot.db"
 
-# ---------------- ТОЧНАЯ ТРАНСКРИПЦИЯ (РАСШИРЕННАЯ БАЗА) ----------------
+# ---------------- ФУНКЦИИ ДЛЯ ТРАНСКРИПЦИИ ----------------
+
+import epitran
+
+# Инициализация для английского языка (США)
+epi = epitran.Epitran('eng-Latn')
 
 def get_transcription(word):
-    """100% точная транскрипция из расширенной базы"""
+    """Получает точную IPA транскрипцию слова с помощью epitran"""
+    try:
+        # Получаем транскрипцию
+        transcription = epi.transliterate(word.lower())
+        
+        # Очищаем от лишних символов
+        transcription = transcription.strip()
+        
+        # Добавляем ударение если его нет
+        if word.lower() in ['a', 'an', 'the', 'and', 'of', 'to', 'in', 'for', 'on', 'with']:
+            pass  # Короткие слова без ударения
+        elif len(word) > 1 and "'" not in transcription and 'ˈ' not in transcription:
+            # Примерное ударение для длинных слов
+            if len(word) > 5:
+                transcription = 'ˈ' + transcription
+        
+        return transcription
+    except Exception as e:
+        print(f"Ошибка транскрипции для {word}: {e}")
+        # Возвращаем упрощенную транскрипцию
+        return simple_transcription(word)
+
+def simple_transcription(word):
+    """Упрощенная транскрипция для неизвестных слов"""
     word_lower = word.lower()
     
-    # Расширенная база транскрипций (более 300 слов)
-    transcriptions = {
-        # Базовые слова
-        'apple': 'ˈæpəl', 'cat': 'kæt', 'dog': 'dɒg', 'car': 'kɑː',
-        'house': 'haʊs', 'hello': 'həˈləʊ', 'world': 'wɜːld', 'time': 'taɪm',
-        'day': 'deɪ', 'night': 'naɪt', 'good': 'ɡʊd', 'bad': 'bæd',
-        'big': 'bɪɡ', 'small': 'smɔːl', 'book': 'bʊk', 'pen': 'pen',
-        'school': 'skuːl', 'teacher': 'ˈtiːtʃə', 'student': 'ˈstjuːdənt',
-        'friend': 'frend', 'love': 'lʌv', 'happy': 'ˈhæpi', 'water': 'ˈwɔːtə',
-        'food': 'fuːd', 'work': 'wɜːk', 'play': 'pleɪ', 'run': 'rʌn',
-        'walk': 'wɔːk', 'read': 'riːd', 'write': 'raɪt', 'speak': 'spiːk',
-        'listen': 'ˈlɪsən', 'learn': 'lɜːn', 'study': 'ˈstʌdi', 'teach': 'tiːtʃ',
-        'understand': 'ˌʌndəˈstænd', 'think': 'θɪŋk', 'know': 'nəʊ', 'see': 'siː',
-        'look': 'lʊk', 'watch': 'wɒtʃ', 'hear': 'hɪə', 'feel': 'fiːl',
-        'help': 'help', 'ask': 'ɑːsk', 'answer': 'ˈɑːnsə', 'say': 'seɪ',
-        'tell': 'tel', 'talk': 'tɔːk', 'give': 'ɡɪv', 'take': 'teɪk',
-        'get': 'ɡet', 'make': 'meɪk', 'do': 'duː', 'have': 'hæv', 'be': 'biː',
-        'can': 'kæn', 'will': 'wɪl', 'would': 'wʊd', 'could': 'kʊd', 'should': 'ʃʊd',
-        'may': 'meɪ', 'might': 'maɪt', 'must': 'mʌst',
+    # Базовые правила
+    result = []
+    i = 0
+    while i < len(word_lower):
+        ch = word_lower[i]
         
-        # Еда
-        'bread': 'bred', 'butter': 'ˈbʌtə', 'cheese': 'tʃiːz', 'milk': 'mɪlk',
-        'coffee': 'ˈkɒfi', 'tea': 'tiː', 'juice': 'dʒuːs', 'meat': 'miːt',
-        'fish': 'fɪʃ', 'chicken': 'ˈtʃɪkɪn', 'rice': 'raɪs', 'pasta': 'ˈpæstə',
-        'soup': 'suːp', 'salad': 'ˈsæləd', 'fruit': 'fruːt', 'vegetable': 'ˈvedʒtəbl',
+        # Гласные
+        if ch == 'a':
+            if i + 1 < len(word_lower) and word_lower[i+1] in 'aeiou':
+                result.append('eɪ')
+                i += 1
+            else:
+                result.append('æ')
+        elif ch == 'e':
+            if i + 1 < len(word_lower) and word_lower[i+1] == 'e':
+                result.append('iː')
+                i += 1
+            else:
+                result.append('e')
+        elif ch == 'i':
+            if i + 1 < len(word_lower) and word_lower[i+1] in 'aeiou':
+                result.append('aɪ')
+                i += 1
+            else:
+                result.append('ɪ')
+        elif ch == 'o':
+            if i + 1 < len(word_lower) and word_lower[i+1] == 'o':
+                result.append('uː')
+                i += 1
+            else:
+                result.append('ɒ')
+        elif ch == 'u':
+            result.append('ʌ')
+        # Согласные
+        elif ch == 'c':
+            if i + 1 < len(word_lower) and word_lower[i+1] == 'h':
+                result.append('tʃ')
+                i += 1
+            elif i + 1 < len(word_lower) and word_lower[i+1] == 'k':
+                result.append('k')
+                i += 1
+            else:
+                result.append('k')
+        elif ch == 's':
+            if i + 1 < len(word_lower) and word_lower[i+1] == 'h':
+                result.append('ʃ')
+                i += 1
+            else:
+                result.append('s')
+        elif ch == 't':
+            if i + 1 < len(word_lower) and word_lower[i+1] == 'h':
+                result.append('θ')
+                i += 1
+            elif i + 1 < len(word_lower) and word_lower[i+1] == 'i' and i + 2 < len(word_lower) and word_lower[i+2] == 'o':
+                result.append('ʃ')
+                i += 2
+            else:
+                result.append('t')
+        elif ch == 'p':
+            result.append('p')
+        elif ch == 'b':
+            result.append('b')
+        elif ch == 'd':
+            result.append('d')
+        elif ch == 'f':
+            result.append('f')
+        elif ch == 'g':
+            if i + 1 < len(word_lower) and word_lower[i+1] == 'e':
+                result.append('dʒ')
+            else:
+                result.append('ɡ')
+        elif ch == 'h':
+            result.append('h')
+        elif ch == 'j':
+            result.append('dʒ')
+        elif ch == 'k':
+            result.append('k')
+        elif ch == 'l':
+            result.append('l')
+        elif ch == 'm':
+            result.append('m')
+        elif ch == 'n':
+            result.append('n')
+        elif ch == 'q':
+            result.append('kw')
+            if i + 1 < len(word_lower) and word_lower[i+1] == 'u':
+                i += 1
+        elif ch == 'r':
+            result.append('r')
+        elif ch == 'v':
+            result.append('v')
+        elif ch == 'w':
+            result.append('w')
+        elif ch == 'x':
+            result.append('ks')
+        elif ch == 'y':
+            if i + 1 < len(word_lower) and word_lower[i+1] in 'aeiou':
+                result.append('j')
+            else:
+                result.append('ɪ')
+        elif ch == 'z':
+            result.append('z')
+        else:
+            result.append(ch)
         
-        # Животные
-        'animal': 'ˈænɪməl', 'bird': 'bɜːd', 'horse': 'hɔːs', 'cow': 'kaʊ',
-        'pig': 'pɪɡ', 'sheep': 'ʃiːp', 'goat': 'ɡəʊt', 'rabbit': 'ˈræbɪt',
-        'mouse': 'maʊs', 'rat': 'ræt', 'frog': 'frɒɡ', 'snake': 'sneɪk',
-        'bear': 'beə', 'wolf': 'wʊlf', 'fox': 'fɒks', 'deer': 'dɪə',
-        
-        # Цвета
-        'red': 'red', 'blue': 'bluː', 'green': 'ɡriːn', 'yellow': 'ˈjeləʊ',
-        'black': 'blæk', 'white': 'waɪt', 'grey': 'ɡreɪ', 'brown': 'braʊn',
-        'pink': 'pɪŋk', 'purple': 'ˈpɜːpl', 'orange': 'ˈɒrɪndʒ',
-        
-        # Семья
-        'mother': 'ˈmʌðə', 'father': 'ˈfɑːðə', 'sister': 'ˈsɪstə', 'brother': 'ˈbrʌðə',
-        'daughter': 'ˈdɔːtə', 'son': 'sʌn', 'grandmother': 'ˈɡrænmʌðə', 'grandfather': 'ˈɡrænfɑːðə',
-        
-        # Места
-        'city': 'ˈsɪti', 'town': 'taʊn', 'village': 'ˈvɪlɪdʒ', 'street': 'striːt',
-        'road': 'rəʊd', 'park': 'pɑːk', 'garden': 'ˈɡɑːdn', 'forest': 'ˈfɒrɪst',
-        'river': 'ˈrɪvə', 'lake': 'leɪk', 'sea': 'siː', 'ocean': 'ˈəʊʃən',
-        'mountain': 'ˈmaʊntɪn', 'hill': 'hɪl', 'field': 'fiːld',
-        
-        # Транспорт
-        'bus': 'bʌs', 'train': 'treɪn', 'plane': 'pleɪn', 'ship': 'ʃɪp',
-        'bicycle': 'ˈbaɪsɪkl', 'motorcycle': 'ˈməʊtəsaɪkl',
-        
-        # Одежда
-        'shirt': 'ʃɜːt', 'trousers': 'ˈtraʊzəz', 'dress': 'dres', 'skirt': 'skɜːt',
-        'coat': 'kəʊt', 'jacket': 'ˈdʒækɪt', 'shoes': 'ʃuːz', 'hat': 'hæt',
-        
-        # Работа
-        'doctor': 'ˈdɒktə', 'nurse': 'nɜːs', 'driver': 'ˈdraɪvə', 'cook': 'kʊk',
-        'builder': 'ˈbɪldə', 'seller': 'ˈselə', 'manager': 'ˈmænɪdʒə',
-        
-        # Прилагательные
-        'beautiful': 'ˈbjuːtɪfl', 'ugly': 'ˈʌɡli', 'clever': 'ˈklevə', 'stupid': 'ˈstjuːpɪd',
-        'strong': 'strɒŋ', 'weak': 'wiːk', 'fast': 'fɑːst', 'slow': 'sləʊ',
-        'new': 'njuː', 'old': 'əʊld', 'young': 'jʌŋ', 'rich': 'rɪtʃ', 'poor': 'pɔː',
-        
-        # Глаголы
-        'open': 'ˈəʊpən', 'close': 'kləʊz', 'start': 'stɑːt', 'finish': 'ˈfɪnɪʃ',
-        'buy': 'baɪ', 'sell': 'sel', 'pay': 'peɪ', 'cost': 'kɒst',
-        'live': 'lɪv', 'die': 'daɪ', 'born': 'bɔːn', 'sleep': 'sliːp',
-        'wake': 'weɪk', 'dream': 'driːm', 'hope': 'həʊp', 'believe': 'bɪˈliːv'
-    }
+        i += 1
     
-    if word_lower in transcriptions:
-        return transcriptions[word_lower]
-    elif len(word) < 6:
-        return f"[{word_lower}]"
-    else:
-        return f"/{word_lower}/"
+    # Добавляем ударение для длинных слов (больше 2 слогов)
+    if len(word) > 5:
+        return 'ˈ' + ''.join(result)
+    return ''.join(result)
 
 def add_transcription_to_word(word):
     return get_transcription(word)
-
 # ---------------- ФУНКЦИИ ДЛЯ РАСПОЗНАВАНИЯ ТЕКСТА С ФОТО ----------------
 
 async def extract_text_from_image(photo_data):
@@ -1171,3 +1232,4 @@ async def main():
 if __name__ == "__main__":
     print("🚀 Запуск...")
     asyncio.run(main())
+
