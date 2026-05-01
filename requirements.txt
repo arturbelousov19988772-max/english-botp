@@ -1,0 +1,7 @@
+aiogram
+python-dotenv
+pillow
+pytesseract
+googletrans
+requests
+epitran
