@@ -46,6 +46,7 @@ def init_db():
             eng TEXT,
             ru TEXT,
             transcription TEXT,
+            word_type TEXT DEFAULT 'word',
             correct_count INTEGER DEFAULT 0,
             wrong_count INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -178,58 +179,75 @@ DB = "bot.db"
 # ---------------- ФУНКЦИИ ДЛЯ ТРАНСКРИПЦИИ ----------------
 
 import epitran
+import re
 
-# Инициализация для английского языка (США)
+# Инициализация для английского языка с правильными настройками
 epi = epitran.Epitran('eng-Latn')
 
 def get_transcription(word):
-    """Получает точную IPA транскрипцию слова с помощью epitran"""
+    """Получает точную IPA транскрипцию слова"""
     try:
+        word_clean = word.lower().strip()
         # Получаем транскрипцию
-        transcription = epi.transliterate(word.lower())
+        transcription = epi.transliterate(word_clean)
         
         # Очищаем от лишних символов
         transcription = transcription.strip()
         
-        # Добавляем ударение если его нет
-        if word.lower() in ['a', 'an', 'the', 'and', 'of', 'to', 'in', 'for', 'on', 'with']:
-            pass  # Короткие слова без ударения
-        elif len(word) > 1 and "'" not in transcription and 'ˈ' not in transcription:
-            # Примерное ударение для длинных слов
-            if len(word) > 5:
-                transcription = 'ˈ' + transcription
+        # Убираем множественные пробелы
+        transcription = re.sub(r'\s+', '', transcription)
+        
+        # Для коротких слов добавляем базовую транскрипцию если пусто
+        if not transcription or transcription == word_clean:
+            transcription = simple_transcription(word_clean)
         
         return transcription
     except Exception as e:
         print(f"Ошибка транскрипции для {word}: {e}")
-        # Возвращаем упрощенную транскрипцию
         return simple_transcription(word)
 
 def simple_transcription(word):
-    """Упрощенная транскрипция для неизвестных слов"""
+    """Расширенная упрощенная транскрипция"""
     word_lower = word.lower()
     
-    # Базовые правила
+    # База правильных транскрипций для частых слов
+    common = {
+        'the': 'ðə', 'and': 'ænd', 'of': 'ʌv', 'to': 'tuː', 'in': 'ɪn',
+        'for': 'fɔː', 'on': 'ɒn', 'with': 'wɪð', 'at': 'æt', 'by': 'baɪ',
+        'camp': 'kæmp', 'following': 'ˈfɒləʊɪŋ', 'hello': 'həˈləʊ',
+        'world': 'wɜːld', 'time': 'taɪm', 'day': 'deɪ', 'night': 'naɪt',
+    }
+    
+    if word_lower in common:
+        return common[word_lower]
+    
+    # Автоматическая генерация
     result = []
     i = 0
     while i < len(word_lower):
         ch = word_lower[i]
         
-        # Гласные
+        # Правила для гласных
         if ch == 'a':
-            if i + 1 < len(word_lower) and word_lower[i+1] in 'aeiou':
+            if i + 1 < len(word_lower) and word_lower[i+1] == 'i':
                 result.append('eɪ')
+                i += 1
+            elif i + 1 < len(word_lower) and word_lower[i+1] == 'u':
+                result.append('ɔː')
                 i += 1
             else:
                 result.append('æ')
         elif ch == 'e':
-            if i + 1 < len(word_lower) and word_lower[i+1] == 'e':
+            if i + 1 < len(word_lower) and word_lower[i+1] == 'a':
+                result.append('iː')
+                i += 1
+            elif i + 1 < len(word_lower) and word_lower[i+1] == 'e':
                 result.append('iː')
                 i += 1
             else:
-                result.append('e')
+                result.append('ɛ')
         elif ch == 'i':
-            if i + 1 < len(word_lower) and word_lower[i+1] in 'aeiou':
+            if i + 1 < len(word_lower) and word_lower[i+1] == 'e':
                 result.append('aɪ')
                 i += 1
             else:
@@ -237,6 +255,9 @@ def simple_transcription(word):
         elif ch == 'o':
             if i + 1 < len(word_lower) and word_lower[i+1] == 'o':
                 result.append('uː')
+                i += 1
+            elif i + 1 < len(word_lower) and word_lower[i+1] == 'u':
+                result.append('aʊ')
                 i += 1
             else:
                 result.append('ɒ')
@@ -246,9 +267,6 @@ def simple_transcription(word):
         elif ch == 'c':
             if i + 1 < len(word_lower) and word_lower[i+1] == 'h':
                 result.append('tʃ')
-                i += 1
-            elif i + 1 < len(word_lower) and word_lower[i+1] == 'k':
-                result.append('k')
                 i += 1
             else:
                 result.append('k')
@@ -262,9 +280,6 @@ def simple_transcription(word):
             if i + 1 < len(word_lower) and word_lower[i+1] == 'h':
                 result.append('θ')
                 i += 1
-            elif i + 1 < len(word_lower) and word_lower[i+1] == 'i' and i + 2 < len(word_lower) and word_lower[i+2] == 'o':
-                result.append('ʃ')
-                i += 2
             else:
                 result.append('t')
         elif ch == 'p':
@@ -276,10 +291,7 @@ def simple_transcription(word):
         elif ch == 'f':
             result.append('f')
         elif ch == 'g':
-            if i + 1 < len(word_lower) and word_lower[i+1] == 'e':
-                result.append('dʒ')
-            else:
-                result.append('ɡ')
+            result.append('ɡ')
         elif ch == 'h':
             result.append('h')
         elif ch == 'j':
@@ -305,63 +317,91 @@ def simple_transcription(word):
         elif ch == 'x':
             result.append('ks')
         elif ch == 'y':
-            if i + 1 < len(word_lower) and word_lower[i+1] in 'aeiou':
-                result.append('j')
-            else:
-                result.append('ɪ')
+            result.append('j')
         elif ch == 'z':
             result.append('z')
         else:
             result.append(ch)
-        
         i += 1
     
-    # Добавляем ударение для длинных слов (больше 2 слогов)
-    if len(word) > 5:
-        return 'ˈ' + ''.join(result)
-    return ''.join(result)
+    transcription = ''.join(result)
+    if len(word) > 4:
+        transcription = 'ˈ' + transcription
+    return transcription
 
 def add_transcription_to_word(word):
     return get_transcription(word)
 # ---------------- ФУНКЦИИ ДЛЯ РАСПОЗНАВАНИЯ ТЕКСТА С ФОТО ----------------
 
 async def extract_text_from_image(photo_data):
-    """Извлекает текст из изображения через OCR.space API (работает без установки Tesseract)"""
-    try:
-        # Используем бесплатный OCR API
-        response = requests.post(
-            'https://api.ocr.space/parse/image',
-            files={'file': ('image.jpg', photo_data, 'image/jpeg')},
-            data={'apikey': 'helloworld', 'language': 'eng', 'isOverlayRequired': False},
-            timeout=30
-        )
-        
-        if response.status_code == 200:
-            result = response.json()
-            if result.get('ParsedResults') and len(result['ParsedResults']) > 0:
-                text = result['ParsedResults'][0].get('ParsedText', '')
-                if text:
-                    text = ' '.join(text.split())
-                    return text.strip()
-        return None
-    except Exception as e:
-        print(f"Ошибка OCR API: {e}")
-        return None
+    """Извлекает текст из изображения с предобработкой"""
+    for attempt in range(2):
+        try:
+            # Используем бесплатный OCR API
+            response = requests.post(
+                'https://api.ocr.space/parse/image',
+                files={'file': ('image.jpg', photo_data, 'image/jpeg')},
+                data={'apikey': 'helloworld', 'language': 'eng', 'isOverlayRequired': False, 'scale': 'true'},
+                timeout=60
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('ParsedResults') and len(result['ParsedResults']) > 0:
+                    text = result['ParsedResults'][0].get('ParsedText', '')
+                    if text:
+                        # Очищаем текст от мусора
+                        text = re.sub(r'[^\w\s]', ' ', text)
+                        text = re.sub(r'\s+', ' ', text)
+                        text = ' '.join(text.split())
+                        return text.strip()
+            return None
+        except Exception as e:
+            print(f"Ошибка OCR: {e}, попытка {attempt + 1}")
+            if attempt == 0:
+                await asyncio.sleep(2)
+    return None
 
 async def parse_words_from_text(text):
-    """Парсит слова и переводы из текста, переводит их"""
+    """Парсит все возможные английские слова из текста"""
     words = []
     
-    # Ищем все английские слова (от 2 до 20 букв)
-    english_words = re.findall(r'\b[a-zA-Z]{2,20}\b', text)
+    # Находим все английские слова (от 2 до 30 букв)
+    # \b - граница слова, [a-zA-Z] - английские буквы
+    matches = re.findall(r'\b[a-zA-Z]{2,30}\b', text)
     
-    # Удаляем дубликаты и сортируем по длине (сначала длинные)
-    unique_words = list(set([w.lower() for w in english_words]))
+    for word in matches:
+        word_lower = word.lower()
+        
+        # Пропускаем слишком короткие
+        if len(word_lower) < 2:
+            continue
+        
+        # Пропускаем числа
+        if word_lower.isdigit():
+            continue
+        
+        # Пропускаем частые короткие слова-мусор
+        if word_lower in ['aa', 'bb', 'cc', 'dd', 'xx', 'zz']:
+            continue
+        
+        words.append(word_lower)
+    
+    # Удаляем дубликаты, сохраняя порядок
+    unique_words = []
+    seen = set()
+    for w in words:
+        if w not in seen:
+            seen.add(w)
+            unique_words.append(w)
+    
+    # Сортируем по длине (сначала длинные - они более значимые)
     unique_words.sort(key=len, reverse=True)
     
-    # Берем первые 15 слов
-    for eng in unique_words[:15]:
-        ru = eng  # Временное значение
+    # Берем больше слов - до 30
+    result_words = []
+    for eng in unique_words[:30]:
+        ru = eng
         
         # Пробуем перевести через Google Translate если доступен
         if translator and TRANSLATOR_AVAILABLE:
@@ -371,9 +411,12 @@ async def parse_words_from_text(text):
             except:
                 pass
         
-        words.append((eng, ru))
+        result_words.append((eng, ru))
     
-    return words
+    # Выводим количество найденных слов в лог
+    print(f"🔍 Найдено уникальных слов: {len(unique_words)}, добавлено: {len(result_words)}")
+    
+    return result_words
 
 async def translate_and_add_words(user_id, words):
     """Переводит слова и добавляет в словарь с транскрипцией"""
