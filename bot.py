@@ -179,33 +179,25 @@ DB = "bot.db"
 # ---------------- ФУНКЦИИ ДЛЯ ТРАНСКРИПЦИИ ----------------
 
 from phonemizer import phonemize
-from phonemizer.backend import EspeakBackend
-
-# Инициализируем backend один раз (быстрее)
-backend = EspeakBackend(language='en-us', preserve_stress=True, with_stress=True)
 
 def get_transcription(word: str) -> str:
-    """Генерирует IPA транскрипцию для любого английского слова"""
+    """Генерирует IPA транскрипцию для любого английского слова."""
     try:
-        # phonemizer возвращает строку с IPA, возможно, с пробелами между фонемами
-        phonemes = phonemize(
+        # Функция phonemize возвращает строку с IPA символами
+        transcription = phonemize(
             word,
-            language='en-us',
-            backend='espeak',
-            strip=True,
-            preserve_stress=True
+            language='en-us',      # Язык: американский английский
+            backend='espeak',      # Бэкенд: espeak-ng
+            strip=True,            # Убираем лишние пробелы
+            preserve_stress=True   # Сохраняем ударения (символ ˈ)
         )
-        # Убираем лишние пробелы
-        phonemes = phonemes.replace(' ', '')
-        # Оборачиваем в квадратные скобки
-        return f"[{phonemes}]"
+        # Очищаем от возможных пробелов и оборачиваем в скобки
+        return f"[{transcription.strip()}]"
     except Exception as e:
-        print(f"Ошибка phonemizer для '{word}': {e}")
-        # fallback – просто слово в скобках
-        return f"[{word.lower()}]"
-
-def add_transcription_to_word(word):
-    return get_transcription(word)
+        # На случай ошибки возвращаем слово в скобках
+        print(f"Ошибка транскрипции для '{word}': {e}")
+        return f"[{word.lower()}]" 
+        
 # ---------------- ФУНКЦИИ ДЛЯ РАСПОЗНАВАНИЯ ТЕКСТА С ФОТО ----------------
 
 async def extract_text_from_image(photo_data):
