@@ -47,8 +47,8 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher()
 DB = "bot.db"
 
-# ------------------ БАЗА ДАННЫХ (ЕДИНСТВЕННАЯ ВЕРСИЯ) ------------------
-@contextmaker
+# ------------------ БАЗА ДАННЫХ ------------------
+@contextmanager
 def get_db():
     conn = sqlite3.connect(DB)
     conn.row_factory = sqlite3.Row
@@ -89,7 +89,7 @@ def init_db():
         db.commit()
     print("✅ База данных готова")
 
-# ------------------ ТРАНСКРИПЦИЯ (PHONEMIZER, БЕЗ preserve_stress) ------------------
+# ------------------ ТРАНСКРИПЦИЯ (PHONEMIZER) ------------------
 def get_transcription(word: str) -> str:
     try:
         transcription = phonemize(
@@ -107,7 +107,7 @@ def get_transcription(word: str) -> str:
 def add_transcription_to_word(word):
     return get_transcription(word)
 
-# ------------------ ОСНОВНЫЕ CRUD ------------------
+# ------------------ CRUD ------------------
 def add_user(user_id, username=None, first_name=None):
     with get_db() as db:
         try:
@@ -124,11 +124,9 @@ def add_user(user_id, username=None, first_name=None):
             db.commit()
 
 def add_word_to_user(user_id, eng, ru, word_type='word'):
-    """Добавляет или обновляет слово в словаре пользователя"""
     eng_clean = eng.lower().strip()
     ru_clean = ru.strip()
     transcription = add_transcription_to_word(eng_clean)
-    
     with get_db() as db:
         try:
             db.execute("""
@@ -139,7 +137,7 @@ def add_word_to_user(user_id, eng, ru, word_type='word'):
             print(f"✅ Добавлено слово: {eng_clean} -> {ru_clean}")
             return True
         except sqlite3.IntegrityError:
-            # Обновляем транскрипцию, если уже есть такая же пара
+            # Обновляем транскрипцию для существующей пары (user_id, eng, ru)
             db.execute("""
                 UPDATE user_words 
                 SET transcription = ?
@@ -230,7 +228,7 @@ def delete_word(user_id, eng):
         db.commit()
         return db.total_changes > 0
 
-# ------------------ ОБРАБОТКА ФОТО ------------------
+# ------------------ OCR И ОБРАБОТКА ФОТО ------------------
 async def extract_text_from_image(photo_data):
     for attempt in range(2):
         try:
@@ -869,7 +867,7 @@ async def handle_messages(m: Message):
                 await m.answer(f"❌ Не удалось добавить *{temp_eng}*", parse_mode="Markdown")
             update_user_mode(uid, "none")
 
-# ------------------ ЗАПУСК ------------------
+# ------------------ RUN ------------------
 async def main():
     init_db()
     await set_commands()
