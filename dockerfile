@@ -25,3 +25,5 @@ COPY . .
 
 # Запускаем бота
 CMD ["python", "bot.py"]
+
+ENV PHONEMIZER_ESPEAK_LIBRARY=/usr/lib/x86_64-linux-gnu/libespeak-ng.so.1
