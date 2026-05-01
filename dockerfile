@@ -1,23 +1,12 @@
 FROM python:3.11-slim
 
-# Установка системных зависимостей для Tesseract и epitran
+# Установка системных зависимостей: eSpeak-ng для phonemizer, Tesseract для OCR
 RUN apt-get update && apt-get install -y \
+    espeak-ng \
     tesseract-ocr \
     tesseract-ocr-eng \
     tesseract-ocr-rus \
-    gcc \
-    g++ \
-    make \
-    python3-dev \
-    libicu-dev \
-    pkg-config \
-    flite \
-    flite-dev \
     && rm -rf /var/lib/apt/lists/*
-
-# Установка переменных окружения для увеличения таймаутов
-ENV REQUESTS_TIMEOUT=120
-ENV OCR_SPACE_TIMEOUT=120
 
 WORKDIR /app
 
