@@ -1,7 +1,0 @@
-aiogram==3.15.0
-python-dotenv==1.0.0
-pillow
-pytesseract
-googletrans==4.0.0-rc1
-requests
-phonemizer
