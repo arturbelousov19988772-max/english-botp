@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-# Установка системных зависимостей для Tesseract и epitran
+# Установка системных зависимостей для Tesseract и eng-to-ipa
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     tesseract-ocr-eng \
@@ -9,8 +9,6 @@ RUN apt-get update && apt-get install -y \
     g++ \
     make \
     python3-dev \
-    libicu-dev \
-    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
