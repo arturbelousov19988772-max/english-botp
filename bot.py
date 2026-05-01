@@ -123,21 +123,20 @@ def add_user(user_id, username=None, first_name=None):
             """, (user_id,))
             db.commit()
 
-def add_word_to_user(user_id, eng, ru, word_type='word'):
+def add_word_to_user(user_id, eng, ru):
     eng_clean = eng.lower().strip()
     ru_clean = ru.strip()
     transcription = add_transcription_to_word(eng_clean)
     with get_db() as db:
         try:
             db.execute("""
-                INSERT INTO user_words (user_id, eng, ru, transcription, word_type) 
-                VALUES (?, ?, ?, ?, ?)
-            """, (user_id, eng_clean, ru_clean, transcription, word_type))
+                INSERT INTO user_words (user_id, eng, ru, transcription) 
+                VALUES (?, ?, ?, ?)
+            """, (user_id, eng_clean, ru_clean, transcription))
             db.commit()
             print(f"✅ Добавлено слово: {eng_clean} -> {ru_clean}")
             return True
         except sqlite3.IntegrityError:
-            # Обновляем транскрипцию для существующей пары (user_id, eng, ru)
             db.execute("""
                 UPDATE user_words 
                 SET transcription = ?
