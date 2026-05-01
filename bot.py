@@ -392,7 +392,7 @@ async def translate_and_add_words(user_id, words):
         if add_word_to_user(user_id, eng, ru):
             added += 1
             transcription = get_transcription(eng)
-            added_words.append(f"*{eng}* → {ru} `{transcription}`")
+            added_words.append(f"*{eng}* → {ru} *{transcription}*")
     
     return added, added_words
 
@@ -615,7 +615,7 @@ async def auto_quiz(user_id):
                 if transcription:
                     await bot.send_message(
                         user_id,
-                        f"📖 *{eng}*\n`{transcription}`\n\n||{translations_text}||",
+                        f"📖 *{eng}*\n*{transcription}*\n\n||{translations_text}||",
                         parse_mode="MarkdownV2"
                     )
                 else:
@@ -699,7 +699,7 @@ async def ask_multiple(uid):
 
     msg = f"📖 *{eng}*"
     if transcription:
-        msg += f"\n`{transcription}`"
+        msg += f"\n*{transcription}*"
     
     await bot.send_message(
         uid,
@@ -727,7 +727,7 @@ async def ask_typing(uid):
 
     msg = f"✏️ *{eng}*"
     if transcription:
-        msg += f"\n`{transcription}`"
+        msg += f"\n*{transcription}*"
     
     await bot.send_message(uid, msg, parse_mode="Markdown")
     return True
@@ -796,7 +796,7 @@ async def show_words_list(user_id, page=1):
             trans += f" (+{len(translations)-3})"
         transcription = get_word_transcriptions(user_id, eng)
         if transcription:
-            msg += f"`{i}.` *{eng}* `{transcription}` → {trans}\n"
+            msg += f"`{i}.` *{eng}* *{transcription}* → {trans}\n"
         else:
             msg += f"`{i}.` *{eng}* → {trans}\n"
     
@@ -1206,7 +1206,7 @@ async def handle_messages(m: Message):
             if added > 0:
                 trans_text = ", ".join(translations)
                 transcription = add_transcription_to_word(temp_eng)
-                await m.answer(f"✅ *{temp_eng}* → {trans_text}\n📝 Транскрипция: `{transcription}`", parse_mode="Markdown")
+                await m.answer(f"✅ *{temp_eng}* → {trans_text}\n📝 Транскрипция: *{transcription}*", parse_mode="Markdown")
             else:
                 await m.answer(f"❌ Не удалось добавить *{temp_eng}*", parse_mode="Markdown")
             update_user_mode(uid, "none")
@@ -1232,4 +1232,3 @@ async def main():
 if __name__ == "__main__":
     print("🚀 Запуск...")
     asyncio.run(main())
-
