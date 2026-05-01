@@ -4,139 +4,14 @@ import os
 import sqlite3
 import re
 import requests
-import base64
-import sqlite3
 from contextlib import contextmanager
-
-DB = "bot.db"
-
-@contextmanager
-def get_db():
-    conn = sqlite3.connect(DB)
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-    finally:
-        conn.close()
-
-def init_db():
-    """Инициализация базы данных"""
-    with get_db() as db:
-        # Таблица пользователей
-        db.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            username TEXT,
-            first_name TEXT,
-            wrong INTEGER DEFAULT 0,
-            correct INTEGER DEFAULT 0,
-            add_mode TEXT DEFAULT 'none',
-            temp_eng TEXT,
-            quiz_mode TEXT DEFAULT 'multiple',
-            auto_mode INTEGER DEFAULT 0,
-            quiz_active INTEGER DEFAULT 0
-        )
-        """)
-        
-        # Таблица слов пользователя
-        db.execute("""
-        CREATE TABLE IF NOT EXISTS user_words (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            eng TEXT,
-            ru TEXT,
-            transcription TEXT,
-            word_type TEXT DEFAULT 'word',
-            correct_count INTEGER DEFAULT 0,
-            wrong_count INTEGER DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(user_id, eng, ru)
-        )
-        """)
-        
-        db.commit()
-    print("✅ База данных готова")
-    DB = "bot.db"
-
-@contextmanager
-def get_db():
-    conn = sqlite3.connect(DB)
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-    finally:
-        conn.close()
-
-def migrate_db():
-    """Обновление структуры базы данных"""
-    with get_db() as db:
-        # Колонки для user_words
-        try:
-            db.execute("ALTER TABLE user_words ADD COLUMN word_type TEXT DEFAULT 'word'")
-            print("✅ Добавлена колонка word_type")
-        except sqlite3.OperationalError:
-            pass
-        
-        try:
-            db.execute("ALTER TABLE user_words ADD COLUMN transcription TEXT")
-            print("✅ Добавлена колонка transcription")
-        except sqlite3.OperationalError:
-            pass
-        
-        # Колонки для users
-        columns = [
-            ("username", "TEXT"),
-            ("first_name", "TEXT"),
-            ("add_mode", "TEXT DEFAULT 'none'"),
-            ("temp_eng", "TEXT"),
-            ("quiz_mode", "TEXT DEFAULT 'multiple'"),
-            ("auto_mode", "INTEGER DEFAULT 0"),
-            ("quiz_active", "INTEGER DEFAULT 0"),
-            ("wrong", "INTEGER DEFAULT 0"),
-            ("correct", "INTEGER DEFAULT 0")
-        ]
-        
-        for col_name, col_type in columns:
-            try:
-                db.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}")
-                print(f"✅ Добавлена колонка {col_name}")
-            except sqlite3.OperationalError:
-                pass
-        
-        db.commit()
-
-def init_db():
-    with get_db() as db:
-        db.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY
-        )
-        """)
-        
-        db.execute("""
-        CREATE TABLE IF NOT EXISTS user_words (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            eng TEXT,
-            ru TEXT,
-            correct_count INTEGER DEFAULT 0,
-            wrong_count INTEGER DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(user_id, eng, ru)
-        )
-        """)
-        
-        db.commit()
-    
-    migrate_db()
-    print("✅ База данных готова")
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, BotCommand, BotCommandScopeDefault, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import Command
 from dotenv import load_dotenv
-from contextlib import contextmanager
+from phonemizer import phonemize
 
-# Пытаемся импортировать дополнительные библиотеки
+# ------------------ ДОПОЛНИТЕЛЬНЫЕ БИБЛИОТЕКИ ------------------
 try:
     from PIL import Image
     import io
@@ -159,155 +34,171 @@ except ImportError:
     TRANSLATOR_AVAILABLE = False
     print("⚠️ googletrans не установлен. Автоперевод будет недоступен.")
 
-# Инициализация переводчика если доступен
 translator = Translator() if TRANSLATOR_AVAILABLE else None
 
-# ---------------- INIT ----------------
-
+# ------------------ INIT ------------------
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
-
 if not TOKEN:
     print("Ошибка: BOT_TOKEN не найден в .env файле")
     exit(1)
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
-
 DB = "bot.db"
 
-# ---------------- ФУНКЦИИ ДЛЯ ТРАНСКРИПЦИИ ----------------
-
-from phonemizer import phonemize
-
-def get_transcription(word: str) -> str:
-    """Генерирует IPA транскрипцию для любого английского слова."""
+# ------------------ БАЗА ДАННЫХ ------------------
+@contextmanager
+def get_db():
+    conn = sqlite3.connect(DB)
+    conn.row_factory = sqlite3.Row
     try:
-        # Функция phonemize возвращает строку с IPA символами
+        yield conn
+    finally:
+        conn.close()
+
+def init_db():
+    with get_db() as db:
+        db.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY,
+            username TEXT,
+            first_name TEXT,
+            wrong INTEGER DEFAULT 0,
+            correct INTEGER DEFAULT 0,
+            add_mode TEXT DEFAULT 'none',
+            temp_eng TEXT,
+            quiz_mode TEXT DEFAULT 'multiple',
+            auto_mode INTEGER DEFAULT 0,
+            quiz_active INTEGER DEFAULT 0
+        )
+        """)
+        db.execute("""
+        CREATE TABLE IF NOT EXISTS user_words (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            eng TEXT,
+            ru TEXT,
+            transcription TEXT,
+            correct_count INTEGER DEFAULT 0,
+            wrong_count INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, eng, ru)
+        )
+        """)
+        db.commit()
+    print("✅ База данных готова")
+
+def migrate_db():
+    with get_db() as db:
+        try:
+            db.execute("ALTER TABLE user_words ADD COLUMN transcription TEXT")
+        except sqlite3.OperationalError:
+            pass
+        columns = [
+            ("username", "TEXT"), ("first_name", "TEXT"), ("add_mode", "TEXT DEFAULT 'none'"),
+            ("temp_eng", "TEXT"), ("quiz_mode", "TEXT DEFAULT 'multiple'"),
+            ("auto_mode", "INTEGER DEFAULT 0"), ("quiz_active", "INTEGER DEFAULT 0"),
+            ("wrong", "INTEGER DEFAULT 0"), ("correct", "INTEGER DEFAULT 0")
+        ]
+        for col_name, col_type in columns:
+            try:
+                db.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}")
+                print(f"✅ Добавлена колонка {col_name}")
+            except sqlite3.OperationalError:
+                pass
+        db.commit()
+
+# (вызов migrate_db уже внутри init_db, поэтому отдельно не нужен)
+
+# ------------------ ТРАНСКРИПЦИЯ (PHONEMIZER) ------------------
+def get_transcription(word: str) -> str:
+    """Генерирует IPA транскрипцию, при ошибке – fallback."""
+    try:
+        # Убираем preserve_stress – он вызывает ошибку в вашей версии phonemizer
         transcription = phonemize(
             word,
-            language='en-us',      # Язык: американский английский
-            backend='espeak',      # Бэкенд: espeak-ng
-            strip=True,            # Убираем лишние пробелы
-            preserve_stress=True   # Сохраняем ударения (символ ˈ)
+            language='en-us',
+            backend='espeak',
+            strip=True
         )
-        # Очищаем от возможных пробелов и оборачиваем в скобки
-        return f"[{transcription.strip()}]"
+        transcription = transcription.replace(' ', '')
+        return f"[{transcription}]"
     except Exception as e:
-        # На случай ошибки возвращаем слово в скобках
         print(f"Ошибка транскрипции для '{word}': {e}")
-        return f"[{word.lower()}]" 
-        
-# ---------------- ФУНКЦИИ ДЛЯ РАСПОЗНАВАНИЯ ТЕКСТА С ФОТО ----------------
+        return f"[{word.lower()}]"
 
+def add_transcription_to_word(word):
+    """Функция-обёртка для совместимости (используется в add_word_to_user)."""
+    return get_transcription(word)
+
+# ------------------ OCR И ОБРАБОТКА ФОТО ------------------
 async def extract_text_from_image(photo_data):
-    """Извлекает текст из изображения с предобработкой"""
     for attempt in range(2):
         try:
-            # Используем бесплатный OCR API
             response = requests.post(
                 'https://api.ocr.space/parse/image',
                 files={'file': ('image.jpg', photo_data, 'image/jpeg')},
                 data={'apikey': 'helloworld', 'language': 'eng', 'isOverlayRequired': False, 'scale': 'true'},
                 timeout=60
             )
-            
             if response.status_code == 200:
                 result = response.json()
                 if result.get('ParsedResults') and len(result['ParsedResults']) > 0:
                     text = result['ParsedResults'][0].get('ParsedText', '')
                     if text:
-                        # Очищаем текст от мусора
                         text = re.sub(r'[^\w\s]', ' ', text)
                         text = re.sub(r'\s+', ' ', text)
-                        text = ' '.join(text.split())
                         return text.strip()
             return None
         except Exception as e:
-            print(f"Ошибка OCR: {e}, попытка {attempt + 1}")
+            print(f"Ошибка OCR: {e}, попытка {attempt+1}")
             if attempt == 0:
                 await asyncio.sleep(2)
     return None
 
 async def parse_words_from_text(text):
-    """Парсит все возможные английские слова из текста"""
-    words = []
-    
-    # Находим все английские слова (от 2 до 30 букв)
-    # \b - граница слова, [a-zA-Z] - английские буквы
     matches = re.findall(r'\b[a-zA-Z]{2,30}\b', text)
-    
-    for word in matches:
-        word_lower = word.lower()
-        
-        # Пропускаем слишком короткие
-        if len(word_lower) < 2:
-            continue
-        
-        # Пропускаем числа
-        if word_lower.isdigit():
-            continue
-        
-        # Пропускаем частые короткие слова-мусор
-        if word_lower in ['aa', 'bb', 'cc', 'dd', 'xx', 'zz']:
-            continue
-        
-        words.append(word_lower)
-    
-    # Удаляем дубликаты, сохраняя порядок
-    unique_words = []
+    words = []
+    for w in matches:
+        wl = w.lower()
+        if len(wl) >= 2 and not wl.isdigit() and wl not in ['aa','bb','cc','dd','xx','zz']:
+            words.append(wl)
+    unique = []
     seen = set()
     for w in words:
         if w not in seen:
             seen.add(w)
-            unique_words.append(w)
-    
-    # Сортируем по длине (сначала длинные - они более значимые)
-    unique_words.sort(key=len, reverse=True)
-    
-    # Берем больше слов - до 30
-    result_words = []
-    for eng in unique_words[:30]:
+            unique.append(w)
+    unique.sort(key=len, reverse=True)
+    result = []
+    for eng in unique[:30]:
         ru = eng
-        
-        # Пробуем перевести через Google Translate если доступен
         if translator and TRANSLATOR_AVAILABLE:
             try:
-                translated = await translator.translate(eng, src='en', dest='ru')
-                ru = translated.text
+                ru = (await translator.translate(eng, src='en', dest='ru')).text
             except:
                 pass
-        
-        result_words.append((eng, ru))
-    
-    # Выводим количество найденных слов в лог
-    print(f"🔍 Найдено уникальных слов: {len(unique_words)}, добавлено: {len(result_words)}")
-    
-    return result_words
+        result.append((eng, ru))
+    print(f"🔍 Найдено уникальных слов: {len(unique)}, добавлено: {len(result)}")
+    return result
 
 async def translate_and_add_words(user_id, words):
-    """Переводит слова и добавляет в словарь с транскрипцией"""
     added = 0
     added_words = []
-    
     for eng, ru in words:
-        # Если перевод не получен, пробуем перевести
         if ru == eng and translator and TRANSLATOR_AVAILABLE:
             try:
-                translated = await translator.translate(eng, src='en', dest='ru')
-                ru = translated.text
+                ru = (await translator.translate(eng, src='en', dest='ru')).text
             except:
                 ru = "???"
-        
         if add_word_to_user(user_id, eng, ru):
             added += 1
             transcription = get_transcription(eng)
             added_words.append(f"*{eng}* → {ru} *{transcription}*")
-    
     return added, added_words
 
-# ---------------- CRUD операции (остаются без изменений) ----------------
-
+# ------------------ CRUD ------------------
 def add_user(user_id, username=None, first_name=None):
     with get_db() as db:
         try:
@@ -338,20 +229,13 @@ def add_word_to_user(user_id, eng, ru, word_type='word'):
 
 def get_word_transcriptions(user_id, eng):
     with get_db() as db:
-        cur = db.execute("""
-            SELECT transcription FROM user_words 
-            WHERE user_id = ? AND eng = ?
-            LIMIT 1
-        """, (user_id, eng.lower().strip()))
-        result = cur.fetchone()
-        return result['transcription'] if result else None
+        cur = db.execute("SELECT transcription FROM user_words WHERE user_id = ? AND eng = ? LIMIT 1", (user_id, eng.lower().strip()))
+        res = cur.fetchone()
+        return res['transcription'] if res else None
 
 def get_word_translations(user_id, eng):
     with get_db() as db:
-        cur = db.execute("""
-            SELECT ru, transcription FROM user_words 
-            WHERE user_id = ? AND eng = ?
-        """, (user_id, eng.lower().strip()))
+        cur = db.execute("SELECT ru, transcription FROM user_words WHERE user_id = ? AND eng = ?", (user_id, eng.lower().strip()))
         return [(row['ru'], row['transcription']) for row in cur.fetchall()]
 
 def add_batch_words_to_user(user_id, words_list):
@@ -360,10 +244,8 @@ def add_batch_words_to_user(user_id, words_list):
         for eng, ru in words_list:
             try:
                 transcription = add_transcription_to_word(eng)
-                db.execute("""
-                    INSERT INTO user_words (user_id, eng, ru, transcription, word_type) 
-                    VALUES (?, ?, ?, ?, 'word')
-                """, (user_id, eng.lower().strip(), ru.strip(), transcription))
+                db.execute("INSERT INTO user_words (user_id, eng, ru, transcription, word_type) VALUES (?, ?, ?, ?, 'word')",
+                           (user_id, eng.lower().strip(), ru.strip(), transcription))
                 added += 1
             except:
                 pass
@@ -372,11 +254,7 @@ def add_batch_words_to_user(user_id, words_list):
 
 def get_user_words(user_id):
     with get_db() as db:
-        cur = db.execute("""
-            SELECT DISTINCT eng FROM user_words 
-            WHERE user_id = ?
-            ORDER BY created_at DESC
-        """, (user_id,))
+        cur = db.execute("SELECT DISTINCT eng FROM user_words WHERE user_id = ? ORDER BY created_at DESC", (user_id,))
         words = []
         for row in cur.fetchall():
             translations = get_word_translations(user_id, row['eng'])
@@ -393,24 +271,16 @@ def get_random_user_word(user_id):
 
 def count_user_words(user_id):
     with get_db() as db:
-        cur = db.execute("SELECT COUNT(DISTINCT eng) as count FROM user_words WHERE user_id = ?", (user_id,))
-        result = cur.fetchone()
-        return result['count'] if result else 0
+        cur = db.execute("SELECT COUNT(DISTINCT eng) FROM user_words WHERE user_id = ?", (user_id,))
+        res = cur.fetchone()
+        return res[0] if res else 0
 
 def update_word_stats(user_id, eng, is_correct):
     with get_db() as db:
         if is_correct:
-            db.execute("""
-                UPDATE user_words 
-                SET correct_count = correct_count + 1 
-                WHERE user_id = ? AND eng = ?
-            """, (user_id, eng))
+            db.execute("UPDATE user_words SET correct_count = correct_count + 1 WHERE user_id = ? AND eng = ?", (user_id, eng))
         else:
-            db.execute("""
-                UPDATE user_words 
-                SET wrong_count = wrong_count + 1 
-                WHERE user_id = ? AND eng = ?
-            """, (user_id, eng))
+            db.execute("UPDATE user_words SET wrong_count = wrong_count + 1 WHERE user_id = ? AND eng = ?", (user_id, eng))
         db.commit()
 
 def update_user_stats(user_id, is_correct):
@@ -425,64 +295,40 @@ def get_user_stats(user_id):
     with get_db() as db:
         cur = db.execute("SELECT wrong, correct FROM users WHERE user_id = ?", (user_id,))
         result = cur.fetchone()
-        if not result:
-            return {'wrong': 0, 'correct': 0}
-        return result
+        return {'wrong': result['wrong'] if result else 0, 'correct': result['correct'] if result else 0}
 
 def update_user_mode(user_id, mode, temp_eng=None):
     with get_db() as db:
-        try:
-            if temp_eng:
-                db.execute("UPDATE users SET add_mode = ?, temp_eng = ? WHERE user_id = ?", (mode, temp_eng, user_id))
-            else:
-                db.execute("UPDATE users SET add_mode = ? WHERE user_id = ?", (mode, user_id))
-            db.commit()
-        except:
-            if temp_eng:
-                db.execute("UPDATE users SET add_mode = ?, temp_eng = ? WHERE user_id = ?", (mode, temp_eng, user_id))
-            else:
-                db.execute("UPDATE users SET add_mode = ? WHERE user_id = ?", (mode, user_id))
-            db.commit()
+        if temp_eng:
+            db.execute("UPDATE users SET add_mode = ?, temp_eng = ? WHERE user_id = ?", (mode, temp_eng, user_id))
+        else:
+            db.execute("UPDATE users SET add_mode = ? WHERE user_id = ?", (mode, user_id))
+        db.commit()
 
 def get_user_mode(user_id):
     with get_db() as db:
-        try:
-            cur = db.execute("SELECT add_mode, temp_eng, quiz_mode, auto_mode FROM users WHERE user_id = ?", (user_id,))
-            result = cur.fetchone()
-            if not result:
-                add_user(user_id)
-                return {'add_mode': 'none', 'temp_eng': None, 'quiz_mode': 'multiple', 'auto_mode': 0}
-            return result
-        except:
+        cur = db.execute("SELECT add_mode, temp_eng, quiz_mode, auto_mode FROM users WHERE user_id = ?", (user_id,))
+        result = cur.fetchone()
+        if not result:
             add_user(user_id)
             return {'add_mode': 'none', 'temp_eng': None, 'quiz_mode': 'multiple', 'auto_mode': 0}
+        return result
 
 def update_quiz_mode(user_id, mode):
     with get_db() as db:
-        try:
-            db.execute("UPDATE users SET quiz_mode = ? WHERE user_id = ?", (mode, user_id))
-            db.commit()
-        except:
-            db.execute("UPDATE users SET quiz_mode = ? WHERE user_id = ?", (mode, user_id))
-            db.commit()
+        db.execute("UPDATE users SET quiz_mode = ? WHERE user_id = ?", (mode, user_id))
+        db.commit()
 
 def update_auto_mode(user_id, enabled):
     with get_db() as db:
-        try:
-            db.execute("UPDATE users SET auto_mode = ? WHERE user_id = ?", (1 if enabled else 0, user_id))
-            db.commit()
-        except:
-            db.execute("UPDATE users SET auto_mode = ? WHERE user_id = ?", (1 if enabled else 0, user_id))
-            db.commit()
+        db.execute("UPDATE users SET auto_mode = ? WHERE user_id = ?", (1 if enabled else 0, user_id))
+        db.commit()
 
 def get_auto_mode(user_id):
     with get_db() as db:
-        try:
-            cur = db.execute("SELECT auto_mode FROM users WHERE user_id = ?", (user_id,))
-            result = cur.fetchone()
-            return result['auto_mode'] == 1 if result else False
-        except:
-            return False
+        cur = db.execute("SELECT auto_mode FROM users WHERE user_id = ?", (user_id,))
+        result = cur.fetchone()
+        return result['auto_mode'] == 1 if result else False
 
 def delete_word(user_id, eng):
     with get_db() as db:
@@ -490,8 +336,7 @@ def delete_word(user_id, eng):
         db.commit()
         return db.total_changes > 0
 
-# ---------------- STATE ----------------
-
+# ------------------ STATE ------------------
 state = {}
 
 def get_state(uid):
@@ -506,8 +351,7 @@ def get_state(uid):
         }
     return state[uid]
 
-# ---------------- AUTO MODE ----------------
-
+# ------------------ AUTO MODE ------------------
 auto_tasks = {}
 
 async def auto_quiz(user_id):
@@ -515,13 +359,10 @@ async def auto_quiz(user_id):
         try:
             if not get_auto_mode(user_id):
                 break
-            
             word_data = get_random_user_word(user_id)
-            
             if word_data:
                 eng, translations, transcription = word_data
                 translations_text = ", ".join(translations)
-                
                 if transcription:
                     await bot.send_message(
                         user_id,
@@ -538,9 +379,7 @@ async def auto_quiz(user_id):
                 await bot.send_message(user_id, "📚 Словарь пуст. Добавьте слова через '➕ Добавить'")
                 update_auto_mode(user_id, False)
                 break
-            
             await asyncio.sleep(120)
-            
         except asyncio.CancelledError:
             break
         except Exception as e:
@@ -553,7 +392,6 @@ def start_auto_mode(user_id):
             auto_tasks[user_id].cancel()
         except:
             pass
-    
     task = asyncio.create_task(auto_quiz(user_id))
     auto_tasks[user_id] = task
 
@@ -567,8 +405,7 @@ def stop_auto_mode(user_id):
             if user_id in auto_tasks:
                 del auto_tasks[user_id]
 
-# ---------------- QUIZ ----------------
-
+# ------------------ QUIZ ------------------
 def keyboard(correct, wrongs):
     buttons = [correct] + wrongs
     random.shuffle(buttons)
@@ -651,35 +488,28 @@ async def ask(uid):
     else:
         return await ask_typing(uid)
 
-# ---------------- СПИСОК СЛОВ С ПАГИНАЦИЕЙ ----------------
-
+# ------------------ СПИСОК СЛОВ С ПАГИНАЦИЕЙ ------------------
 words_per_page = 8
 
 def get_words_page(user_id, page):
     words = get_user_words(user_id)
     total_pages = (len(words) + words_per_page - 1) // words_per_page
-    
     start = (page - 1) * words_per_page
     end = start + words_per_page
     page_words = words[start:end]
-    
     return page_words, total_pages
 
 def create_list_keyboard(user_id, page, total_pages):
     keyboard = []
-    
     nav_buttons = []
     if page > 1:
         nav_buttons.append(InlineKeyboardButton(text="◀️ Назад", callback_data=f"list_page:{page-1}"))
     nav_buttons.append(InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="list_none"))
     if page < total_pages:
         nav_buttons.append(InlineKeyboardButton(text="Вперед ▶️", callback_data=f"list_page:{page+1}"))
-    
     if nav_buttons:
         keyboard.append(nav_buttons)
-    
     keyboard.append([InlineKeyboardButton(text="❌ Закрыть", callback_data="list_close")])
-    
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 async def show_words_list(user_id, page=1):
@@ -689,7 +519,6 @@ async def show_words_list(user_id, page=1):
         return
     
     total_pages = (len(words) + words_per_page - 1) // words_per_page
-    
     if page < 1:
         page = 1
     if page > total_pages:
@@ -699,7 +528,6 @@ async def show_words_list(user_id, page=1):
     start_num = (page - 1) * words_per_page + 1
     
     msg = f"📚 *Мои слова* • {len(words)}\n\n"
-    
     for i, (eng, translations) in enumerate(page_words, start_num):
         trans = ", ".join(translations[:3])
         if len(translations) > 3:
@@ -713,8 +541,7 @@ async def show_words_list(user_id, page=1):
     keyboard = create_list_keyboard(user_id, page, total_pages)
     await bot.send_message(user_id, msg, parse_mode="Markdown", reply_markup=keyboard)
 
-# ---------------- КОМАНДЫ И МЕНЮ (ДОБАВЛЕНА КНОПКА ФОТО) ----------------
-
+# ------------------ КОМАНДЫ И МЕНЮ ------------------
 async def set_commands():
     commands = [
         BotCommand(command="start", description="🌱 Главное меню"),
@@ -737,7 +564,6 @@ async def start(m: Message):
     user_id = m.from_user.id
     add_user(user_id, m.from_user.username, m.from_user.first_name)
     
-    # Обновленное меню со всеми кнопками
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="🎯 Учить"), KeyboardButton(text="🔄 Авто"), KeyboardButton(text="⏹️ Стоп")],
@@ -749,7 +575,6 @@ async def start(m: Message):
     )
     
     word_count = count_user_words(user_id)
-    
     photo_status = "✅" if (PIL_AVAILABLE and TESSERACT_AVAILABLE) else "✅ (OCR.space API)"
     
     await m.answer(
@@ -771,8 +596,6 @@ async def start(m: Message):
         parse_mode="Markdown",
         reply_markup=keyboard
     )
-
-# ---------------- ОБРАБОТКА ФОТО (УЛУЧШЕННАЯ) ----------------
 
 @dp.message(Command("photo"))
 @dp.message(F.text == "📸 Фото")
@@ -800,25 +623,18 @@ async def handle_photo(m: Message):
         file = await bot.get_file(photo.file_id)
         file_data = await bot.download_file(file.file_path)
         
-        # Распознаем текст
         text = await extract_text_from_image(file_data.read())
-        
         if not text:
-            await m.answer("❌ *Не удалось распознать текст*\n\nПопробуйте:\n• Сделать фото четче\n• Улучшить освещение\n• Использовать контрастный фон", parse_mode="Markdown")
+            await m.answer("❌ *Не удалось распознать текст*\n\nПопробуйте:\n• Сделать фото четче\n• Улучшить освещение", parse_mode="Markdown")
             return
         
         await m.answer(f"🔍 *Распознанный текст:*\n`{text[:300]}{'...' if len(text) > 300 else ''}`\n\n📍 Извлекаю слова...", parse_mode="Markdown")
-        
-        # Парсим слова
         words = await parse_words_from_text(text)
-        
         if not words:
             await m.answer("❌ *Английские слова не найдены*", parse_mode="Markdown")
             return
         
         await m.answer(f"📝 *Найдено слов:* {len(words)}\n\n📍 Перевожу и добавляю в словарь...", parse_mode="Markdown")
-        
-        # Переводим и добавляем слова
         added, added_words = await translate_and_add_words(user_id, words)
         
         if added > 0:
@@ -900,7 +716,6 @@ async def quiz(m: Message):
 @dp.message(Command("auto"))
 async def auto_mode(m: Message):
     uid = m.from_user.id
-    
     if count_user_words(uid) == 0:
         await m.answer("📚 Словарь пуст. Добавьте слова через '➕ Добавить'")
         return
@@ -985,14 +800,12 @@ async def list_none_callback(c: CallbackQuery):
 async def mode_callback(c: CallbackQuery):
     mode = c.data.split("_")[1]
     uid = c.from_user.id
-    
     if mode == "multiple":
         update_quiz_mode(uid, "multiple")
         await c.message.edit_text("🎮 Режим: *Выбор ответа*", parse_mode="Markdown")
     else:
         update_quiz_mode(uid, "typing")
         await c.message.edit_text("✏️ Режим: *Ввод ответа*", parse_mode="Markdown")
-    
     await c.answer()
 
 @dp.callback_query(F.data.startswith("ans:"))
@@ -1026,8 +839,7 @@ async def answer_callback(c: CallbackQuery):
         await asyncio.sleep(0.5)
         await ask(uid)
 
-# ---------------- ОСНОВНЫЕ ОБРАБОТЧИКИ ----------------
-
+# ------------------ ОСНОВНЫЕ ОБРАБОТЧИКИ ------------------
 @dp.message(F.text & ~F.text.startswith('/') & ~F.text.in_([
     "🎯 Учить", "🔄 Авто", "➕ Добавить", "📦 Список", "📚 Слова",
     "📊 Статистика", "🎮 Режим", "🗑️ Удалить", "⏹️ Стоп", "❌ Отмена", "📸 Фото"
@@ -1037,11 +849,9 @@ async def handle_messages(m: Message):
     user_mode = get_user_mode(uid)
     st = get_state(uid)
     
-    # Режим ввода ответа
     if st.get("waiting_for_answer", False):
         eng, correct_translations = st["current"]
         user_answer = m.text.strip().lower()
-        
         is_correct = user_answer in [t.lower() for t in correct_translations]
         
         if is_correct:
@@ -1059,7 +869,6 @@ async def handle_messages(m: Message):
             await m.answer(f"❌ *{eng}* → {trans_text}\nТвой ответ: {m.text}", parse_mode="Markdown")
         return
     
-    # Режим удаления
     if user_mode['add_mode'] == "delete":
         eng = m.text.strip()
         if delete_word(uid, eng):
@@ -1069,29 +878,23 @@ async def handle_messages(m: Message):
         update_user_mode(uid, "none")
         return
     
-    # Массовое добавление
     if user_mode['add_mode'] == "batch":
         lines = m.text.strip().split('\n')
         added = 0
-        
         for line in lines:
             line = line.strip()
             if not line:
                 continue
-            
             for sep in [' - ', '=', ':', '—', '-']:
                 if sep in line:
                     parts = line.split(sep, 1)
                     eng = parts[0].strip()
                     ru_part = parts[1].strip()
-                    
                     translations = [t.strip() for t in ru_part.split(',')]
-                    
                     for ru in translations:
                         if add_word_to_user(uid, eng, ru):
                             added += 1
                     break
-        
         if added > 0:
             await m.answer(f"✅ Добавлено переводов: *{added}*\n📝 Транскрипция добавлена автоматически", parse_mode="Markdown")
         else:
@@ -1099,7 +902,6 @@ async def handle_messages(m: Message):
         update_user_mode(uid, "none")
         return
     
-    # Пошаговое добавление
     elif user_mode['add_mode'] == "word_eng":
         update_user_mode(uid, "word_ru", m.text)
         await m.answer("✏️ Введите перевод (можно несколько через запятую):", parse_mode="Markdown")
@@ -1112,7 +914,6 @@ async def handle_messages(m: Message):
             for ru in translations:
                 if add_word_to_user(uid, temp_eng, ru):
                     added += 1
-            
             if added > 0:
                 trans_text = ", ".join(translations)
                 transcription = add_transcription_to_word(temp_eng)
@@ -1121,8 +922,7 @@ async def handle_messages(m: Message):
                 await m.answer(f"❌ Не удалось добавить *{temp_eng}*", parse_mode="Markdown")
             update_user_mode(uid, "none")
 
-# ---------------- RUN ----------------
-
+# ------------------ RUN ------------------
 async def main():
     init_db()
     await set_commands()
@@ -1135,7 +935,7 @@ async def main():
     print(f"📷 PIL: {'✅' if PIL_AVAILABLE else '❌'}")
     print(f"🔍 Tesseract: {'✅' if TESSERACT_AVAILABLE else '❌'}")
     print(f"🌐 Translator: {'✅' if TRANSLATOR_AVAILABLE else '❌'}")
-    print(f"📡 OCR.space API: ✅ (резервный вариант)")
+    print(f"🔊 Phonemizer: {'✅' if True else '❌'}")
     print("="*50 + "\n")
     await dp.start_polling(bot)
 
