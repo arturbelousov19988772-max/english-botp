@@ -4,4 +4,4 @@ pillow
 pytesseract
 googletrans
 requests
-eng-to-ipa
+epitran
