@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-# Установка всех системных зависимостей для Tesseract и epitran
+# Установка системных зависимостей для Tesseract и epitran
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     tesseract-ocr-eng \
@@ -13,19 +13,16 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     flite \
     flite-dev \
-    libflite1 \
-    libflite-dev \
-    git \
-    cmake \
     && rm -rf /var/lib/apt/lists/*
+
+# Установка переменных окружения для увеличения таймаутов
+ENV REQUESTS_TIMEOUT=120
+ENV OCR_SPACE_TIMEOUT=120
 
 WORKDIR /app
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Дополнительная установка epitran с поддержкой flite
-RUN pip install --no-cache-dir epitran --upgrade
 
 COPY . .
 
