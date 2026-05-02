@@ -5,6 +5,20 @@ import sqlite3
 import re
 import requests
 import subprocess
+def ensure_espeak():
+    """Устанавливает eSpeak при первом запуске (если отсутствует)"""
+    import subprocess, sys
+    try:
+        subprocess.run(['espeak-ng', '--version'], capture_output=True, check=True)
+        print("✅ eSpeak уже установлен")
+    except:
+        print("📦 Устанавливаю eSpeak...")
+        subprocess.run(['apt-get', 'update'], check=True)
+        subprocess.run(['apt-get', 'install', '-y', 'espeak-ng', 'libespeak-ng-dev'], check=True)
+        print("✅ eSpeak установлен")
+
+# внутри async def main():
+ensure_espeak()
 from contextlib import contextmanager
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, BotCommand, BotCommandScopeDefault, ReplyKeyboardMarkup, KeyboardButton
@@ -616,14 +630,17 @@ def create_list_keyboard(user_id, page, total_pages):
     
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
-async def show_words_list(user_id, page=1):
+async def show_words_list(user_id, page=1, edit_message=None):
     words = get_user_words(user_id)
     if not words:
-        await bot.send_message(user_id, "📚 Словарь пуст. Добавьте слова через '➕ Добавить'")
+        text = "📚 Словарь пуст. Добавьте слова через '➕ Добавить'"
+        if edit_message:
+            await edit_message.edit_text(text, parse_mode="Markdown")
+        else:
+            await bot.send_message(user_id, text, parse_mode="Markdown")
         return
     
     total_pages = (len(words) + words_per_page - 1) // words_per_page
-    
     if page < 1:
         page = 1
     if page > total_pages:
@@ -633,7 +650,6 @@ async def show_words_list(user_id, page=1):
     start_num = (page - 1) * words_per_page + 1
     
     msg = f"📚 *Мои слова* • {len(words)}\n\n"
-    
     for i, (eng, translations) in enumerate(page_words, start_num):
         trans = ", ".join(translations[:3])
         if len(translations) > 3:
@@ -645,7 +661,11 @@ async def show_words_list(user_id, page=1):
             msg += f"`{i}.` *{eng}* → {trans}\n"
     
     keyboard = create_list_keyboard(user_id, page, total_pages)
-    await bot.send_message(user_id, msg, parse_mode="Markdown", reply_markup=keyboard)
+    
+    if edit_message:
+        await edit_message.edit_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+    else:
+        await bot.send_message(user_id, msg, parse_mode="Markdown", reply_markup=keyboard)
 
 # ---------------- КОМАНДЫ И МЕНЮ (ДОБАВЛЕНА КНОПКА ФОТО) ----------------
 
@@ -902,8 +922,8 @@ async def cancel(m: Message):
 async def list_page_callback(c: CallbackQuery):
     page = int(c.data.split(":")[1])
     uid = c.from_user.id
-    await c.message.delete()
-    await show_words_list(uid, page)
+    # Редактируем текущее сообщение, а не удаляем и создаём новое
+    await show_words_list(uid, page, edit_message=c.message)
     await c.answer()
 
 @dp.callback_query(F.data == "list_close")
