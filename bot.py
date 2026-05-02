@@ -4,139 +4,14 @@ import os
 import sqlite3
 import re
 import requests
-import base64
-import sqlite3
+import subprocess
 from contextlib import contextmanager
-
-DB = "bot.db"
-
-@contextmanager
-def get_db():
-    conn = sqlite3.connect(DB)
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-    finally:
-        conn.close()
-
-def init_db():
-    """Инициализация базы данных"""
-    with get_db() as db:
-        # Таблица пользователей
-        db.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            username TEXT,
-            first_name TEXT,
-            wrong INTEGER DEFAULT 0,
-            correct INTEGER DEFAULT 0,
-            add_mode TEXT DEFAULT 'none',
-            temp_eng TEXT,
-            quiz_mode TEXT DEFAULT 'multiple',
-            auto_mode INTEGER DEFAULT 0,
-            quiz_active INTEGER DEFAULT 0
-        )
-        """)
-        
-        # Таблица слов пользователя
-        db.execute("""
-        CREATE TABLE IF NOT EXISTS user_words (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            eng TEXT,
-            ru TEXT,
-            transcription TEXT,
-            word_type TEXT DEFAULT 'word',
-            correct_count INTEGER DEFAULT 0,
-            wrong_count INTEGER DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(user_id, eng, ru)
-        )
-        """)
-        
-        db.commit()
-    print("✅ База данных готова")
-    DB = "bot.db"
-
-@contextmanager
-def get_db():
-    conn = sqlite3.connect(DB)
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-    finally:
-        conn.close()
-
-def migrate_db():
-    """Обновление структуры базы данных"""
-    with get_db() as db:
-        # Колонки для user_words
-        try:
-            db.execute("ALTER TABLE user_words ADD COLUMN word_type TEXT DEFAULT 'word'")
-            print("✅ Добавлена колонка word_type")
-        except sqlite3.OperationalError:
-            pass
-        
-        try:
-            db.execute("ALTER TABLE user_words ADD COLUMN transcription TEXT")
-            print("✅ Добавлена колонка transcription")
-        except sqlite3.OperationalError:
-            pass
-        
-        # Колонки для users
-        columns = [
-            ("username", "TEXT"),
-            ("first_name", "TEXT"),
-            ("add_mode", "TEXT DEFAULT 'none'"),
-            ("temp_eng", "TEXT"),
-            ("quiz_mode", "TEXT DEFAULT 'multiple'"),
-            ("auto_mode", "INTEGER DEFAULT 0"),
-            ("quiz_active", "INTEGER DEFAULT 0"),
-            ("wrong", "INTEGER DEFAULT 0"),
-            ("correct", "INTEGER DEFAULT 0")
-        ]
-        
-        for col_name, col_type in columns:
-            try:
-                db.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}")
-                print(f"✅ Добавлена колонка {col_name}")
-            except sqlite3.OperationalError:
-                pass
-        
-        db.commit()
-
-def init_db():
-    with get_db() as db:
-        db.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY
-        )
-        """)
-        
-        db.execute("""
-        CREATE TABLE IF NOT EXISTS user_words (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            eng TEXT,
-            ru TEXT,
-            correct_count INTEGER DEFAULT 0,
-            wrong_count INTEGER DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(user_id, eng, ru)
-        )
-        """)
-        
-        db.commit()
-    
-    migrate_db()
-    print("✅ База данных готова")
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, BotCommand, BotCommandScopeDefault, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import Command
 from dotenv import load_dotenv
-from contextlib import contextmanager
 
-# Пытаемся импортировать дополнительные библиотеки
+# -- Дополнительные библиотеки (опционально) --
 try:
     from PIL import Image
     import io
@@ -159,32 +34,85 @@ except ImportError:
     TRANSLATOR_AVAILABLE = False
     print("⚠️ googletrans не установлен. Автоперевод будет недоступен.")
 
-# Инициализация переводчика если доступен
 translator = Translator() if TRANSLATOR_AVAILABLE else None
 
-# ---------------- INIT ----------------
-
+# -- INIT --
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
-
 if not TOKEN:
     print("Ошибка: BOT_TOKEN не найден в .env файле")
     exit(1)
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
-
 DB = "bot.db"
 
-# ---------------- ФУНКЦИИ ДЛЯ ТРАНСКРИПЦИИ ----------------
-
-import subprocess
-import re
-
-def get_transcription(word: str) -> str:
-    """Генерирует IPA транскрипцию через espeak-ng"""
+# -- DB --
+@contextmanager
+def get_db():
+    conn = sqlite3.connect(DB)
+    conn.row_factory = sqlite3.Row
     try:
-        # Вызываем espeak-ng напрямую
+        yield conn
+    finally:
+        conn.close()
+
+def migrate_db():
+    with get_db() as db:
+        # Колонки для user_words
+        try:
+            db.execute("ALTER TABLE user_words ADD COLUMN word_type TEXT DEFAULT 'word'")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            db.execute("ALTER TABLE user_words ADD COLUMN transcription TEXT")
+        except sqlite3.OperationalError:
+            pass
+        # Колонки для users
+        columns = [
+            ("username", "TEXT"),
+            ("first_name", "TEXT"),
+            ("add_mode", "TEXT DEFAULT 'none'"),
+            ("temp_eng", "TEXT"),
+            ("quiz_mode", "TEXT DEFAULT 'multiple'"),
+            ("auto_mode", "INTEGER DEFAULT 0"),
+            ("quiz_active", "INTEGER DEFAULT 0"),
+            ("wrong", "INTEGER DEFAULT 0"),
+            ("correct", "INTEGER DEFAULT 0")
+        ]
+        for col_name, col_type in columns:
+            try:
+                db.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}")
+            except sqlite3.OperationalError:
+                pass
+        db.commit()
+
+def init_db():
+    with get_db() as db:
+        db.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY
+        )
+        """)
+        db.execute("""
+        CREATE TABLE IF NOT EXISTS user_words (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            eng TEXT,
+            ru TEXT,
+            correct_count INTEGER DEFAULT 0,
+            wrong_count INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, eng, ru)
+        )
+        """)
+        db.commit()
+    migrate_db()
+    print("✅ База данных готова")
+
+# -- ФУНКЦИИ ДЛЯ ТРАНСКРИПЦИИ (ESPEAK) --
+def get_transcription(word: str) -> str:
+    try:
         result = subprocess.run(
             ['espeak-ng', '--ipa=3', '-v', 'en-us', word],
             capture_output=True,
@@ -193,8 +121,7 @@ def get_transcription(word: str) -> str:
         )
         if result.returncode == 0 and result.stdout.strip():
             transcription = result.stdout.strip()
-            # Убираем знаки ударения, если они мешают отображению
-            transcription = re.sub(r'[ˈˌ]', '', transcription)
+            transcription = re.sub(r'[ˈˌ]', '', transcription)   # убираем знаки ударения
             return f"[{transcription}]"
         else:
             return f"[{word}]"
@@ -204,6 +131,7 @@ def get_transcription(word: str) -> str:
 
 def add_transcription_to_word(word):
     return get_transcription(word)
+
 # ---------------- ФУНКЦИИ ДЛЯ РАСПОЗНАВАНИЯ ТЕКСТА С ФОТО ----------------
 
 async def extract_text_from_image(photo_data):
