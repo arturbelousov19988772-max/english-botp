@@ -4,4 +4,4 @@ pillow
 pytesseract
 googletrans
 requests
-epitran
+espeak-phonemizer
