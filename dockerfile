@@ -1,12 +1,12 @@
 FROM python:3.11-slim
 
-# Установка Tesseract OCR и eSpeak-ng
+# Устанавливаем eSpeak-ng и Tesseract (для распознавания фото)
 RUN apt-get update && apt-get install -y \
+    espeak-ng \
+    libespeak-ng-dev \
     tesseract-ocr \
     tesseract-ocr-eng \
     tesseract-ocr-rus \
-    espeak-ng \
-    libespeak-ng-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
