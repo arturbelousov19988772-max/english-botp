@@ -178,156 +178,37 @@ DB = "bot.db"
 
 # ---------------- ФУНКЦИИ ДЛЯ ТРАНСКРИПЦИИ ----------------
 
-import epitran
+import subprocess
 import re
 
-# Инициализация для английского языка с правильными настройками
-epi = epitran.Epitran('eng-Latn')
-
-def get_transcription(word):
-    """Получает точную IPA транскрипцию слова"""
+def get_transcription(word: str) -> str:
+    """Генерирует IPA транскрипцию с помощью espeak-ng"""
     try:
-        word_clean = word.lower().strip()
-        # Получаем транскрипцию
-        transcription = epi.transliterate(word_clean)
-        
-        # Очищаем от лишних символов
-        transcription = transcription.strip()
-        
-        # Убираем множественные пробелы
-        transcription = re.sub(r'\s+', '', transcription)
-        
-        # Для коротких слов добавляем базовую транскрипцию если пусто
-        if not transcription or transcription == word_clean:
-            transcription = simple_transcription(word_clean)
-        
-        return transcription
-    except Exception as e:
-        print(f"Ошибка транскрипции для {word}: {e}")
-        return simple_transcription(word)
-
-def simple_transcription(word):
-    """Расширенная упрощенная транскрипция"""
-    word_lower = word.lower()
-    
-    # База правильных транскрипций для частых слов
-    common = {
-        'the': 'ðə', 'and': 'ænd', 'of': 'ʌv', 'to': 'tuː', 'in': 'ɪn',
-        'for': 'fɔː', 'on': 'ɒn', 'with': 'wɪð', 'at': 'æt', 'by': 'baɪ',
-        'camp': 'kæmp', 'following': 'ˈfɒləʊɪŋ', 'hello': 'həˈləʊ',
-        'world': 'wɜːld', 'time': 'taɪm', 'day': 'deɪ', 'night': 'naɪt',
-    }
-    
-    if word_lower in common:
-        return common[word_lower]
-    
-    # Автоматическая генерация
-    result = []
-    i = 0
-    while i < len(word_lower):
-        ch = word_lower[i]
-        
-        # Правила для гласных
-        if ch == 'a':
-            if i + 1 < len(word_lower) and word_lower[i+1] == 'i':
-                result.append('eɪ')
-                i += 1
-            elif i + 1 < len(word_lower) and word_lower[i+1] == 'u':
-                result.append('ɔː')
-                i += 1
-            else:
-                result.append('æ')
-        elif ch == 'e':
-            if i + 1 < len(word_lower) and word_lower[i+1] == 'a':
-                result.append('iː')
-                i += 1
-            elif i + 1 < len(word_lower) and word_lower[i+1] == 'e':
-                result.append('iː')
-                i += 1
-            else:
-                result.append('ɛ')
-        elif ch == 'i':
-            if i + 1 < len(word_lower) and word_lower[i+1] == 'e':
-                result.append('aɪ')
-                i += 1
-            else:
-                result.append('ɪ')
-        elif ch == 'o':
-            if i + 1 < len(word_lower) and word_lower[i+1] == 'o':
-                result.append('uː')
-                i += 1
-            elif i + 1 < len(word_lower) and word_lower[i+1] == 'u':
-                result.append('aʊ')
-                i += 1
-            else:
-                result.append('ɒ')
-        elif ch == 'u':
-            result.append('ʌ')
-        # Согласные
-        elif ch == 'c':
-            if i + 1 < len(word_lower) and word_lower[i+1] == 'h':
-                result.append('tʃ')
-                i += 1
-            else:
-                result.append('k')
-        elif ch == 's':
-            if i + 1 < len(word_lower) and word_lower[i+1] == 'h':
-                result.append('ʃ')
-                i += 1
-            else:
-                result.append('s')
-        elif ch == 't':
-            if i + 1 < len(word_lower) and word_lower[i+1] == 'h':
-                result.append('θ')
-                i += 1
-            else:
-                result.append('t')
-        elif ch == 'p':
-            result.append('p')
-        elif ch == 'b':
-            result.append('b')
-        elif ch == 'd':
-            result.append('d')
-        elif ch == 'f':
-            result.append('f')
-        elif ch == 'g':
-            result.append('ɡ')
-        elif ch == 'h':
-            result.append('h')
-        elif ch == 'j':
-            result.append('dʒ')
-        elif ch == 'k':
-            result.append('k')
-        elif ch == 'l':
-            result.append('l')
-        elif ch == 'm':
-            result.append('m')
-        elif ch == 'n':
-            result.append('n')
-        elif ch == 'q':
-            result.append('kw')
-            if i + 1 < len(word_lower) and word_lower[i+1] == 'u':
-                i += 1
-        elif ch == 'r':
-            result.append('r')
-        elif ch == 'v':
-            result.append('v')
-        elif ch == 'w':
-            result.append('w')
-        elif ch == 'x':
-            result.append('ks')
-        elif ch == 'y':
-            result.append('j')
-        elif ch == 'z':
-            result.append('z')
+        result = subprocess.run(
+            ['espeak-ng', '--ipa=3', '-v', 'en-us', word],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            transcription = result.stdout.strip()
+            transcription = re.sub(r'[ˈˌ]', '', transcription)  # убираем знаки ударения
+            return f"[{transcription}]"
         else:
-            result.append(ch)
-        i += 1
-    
-    transcription = ''.join(result)
-    if len(word) > 4:
-        transcription = 'ˈ' + transcription
-    return transcription
+            return fallback_phonemizer(word)
+    except Exception as e:
+        print(f"⚠️ Ошибка eSpeak: {e}")
+        return fallback_phonemizer(word)
+
+def fallback_phonemizer(word: str) -> str:
+    """Резерв через Python-обёртку"""
+    try:
+        from espeak_phonemizer import Phonemizer
+        ph = Phonemizer()
+        ipa = ph.phonemize(word, language='en-us')
+        return f"[{ipa}]"
+    except ImportError:
+        return f"[{word.lower()}]"
 
 def add_transcription_to_word(word):
     return get_transcription(word)
