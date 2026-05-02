@@ -182,8 +182,9 @@ import subprocess
 import re
 
 def get_transcription(word: str) -> str:
-    """Генерирует IPA транскрипцию с помощью espeak-ng"""
+    """Генерирует IPA транскрипцию через espeak-ng"""
     try:
+        # Вызываем espeak-ng напрямую
         result = subprocess.run(
             ['espeak-ng', '--ipa=3', '-v', 'en-us', word],
             capture_output=True,
@@ -192,23 +193,14 @@ def get_transcription(word: str) -> str:
         )
         if result.returncode == 0 and result.stdout.strip():
             transcription = result.stdout.strip()
-            transcription = re.sub(r'[ˈˌ]', '', transcription)  # убираем знаки ударения
+            # Убираем знаки ударения, если они мешают отображению
+            transcription = re.sub(r'[ˈˌ]', '', transcription)
             return f"[{transcription}]"
         else:
-            return fallback_phonemizer(word)
+            return f"[{word}]"
     except Exception as e:
         print(f"⚠️ Ошибка eSpeak: {e}")
-        return fallback_phonemizer(word)
-
-def fallback_phonemizer(word: str) -> str:
-    """Резерв через Python-обёртку"""
-    try:
-        from espeak_phonemizer import Phonemizer
-        ph = Phonemizer()
-        ipa = ph.phonemize(word, language='en-us')
-        return f"[{ipa}]"
-    except ImportError:
-        return f"[{word.lower()}]"
+        return f"[{word}]"
 
 def add_transcription_to_word(word):
     return get_transcription(word)
